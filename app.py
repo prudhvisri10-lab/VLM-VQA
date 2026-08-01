@@ -5,13 +5,11 @@ import gradio as gr
 from groq import Groq
 from dotenv import load_dotenv
 
-load_dotenv()  # reads a .env file in the same folder
+load_dotenv()
 
-# ----------------------------------------------------
-# Config
-# ----------------------------------------------------
-# Note: qwen/qwen3.6-27b is currently Groq's vision-capable model, served
-# as a preview (fine for testing, not guaranteed stable for production).
+# ---------------
+# config
+# ---------------
 MODEL = "qwen/qwen3.6-27b"
 
 SYSTEM_PROMPT = (
@@ -30,11 +28,11 @@ if not API_KEY:
 client = Groq(api_key=API_KEY)
 
 
-# ------------------------------------------------------------------
+# ---------------------------------
 # Helpers
-# ------------------------------------------------------------------
+# --------------------------------------
 def encode_image_to_data_url(filepath: str) -> str:
-    """Reads a local image file and returns a base64 data: URL."""
+    """Reads a local image file and returns a base64 data URL."""
     mime_type, _ = mimetypes.guess_type(filepath)
     mime_type = mime_type or "image/jpeg"
     with open(filepath, "rb") as f:
@@ -55,7 +53,7 @@ def build_user_content(text: str, files: list[str]) -> list[dict]:
     return content
 
 
-def history_to_messages(history: list[dict]) -> list[dict]:
+def history_to_messages(history: list[dict]) -> list:
     """
     Converts Gradio's stored history (messages format, text-only for past
     turns) back into API messages. Past images aren't resent - only the
@@ -70,13 +68,13 @@ def history_to_messages(history: list[dict]) -> list[dict]:
     return messages
 
 
-# ----------------------------------------------------------
-# Chat handler
-# ----------------------------------------------------------
+# ---------------------------------------------------
+# core chat function (streaming, multimodal input)
+# -------------------------------------------------------
 def respond(message, history):
     """
-    message: dict like {"text": "...", "files": ["/tmp/xyz.png", ...]}
-             (Gradio's multimodal ChatInterface format)
+    message: dict like {"text": "...", "files": ["/tmp/xyz.png",...]}
+              (Gradio's multimodal ChatInterface format)
     history: prior turns in messages format
     """
     text = message.get("text", "") or ""
@@ -95,7 +93,7 @@ def respond(message, history):
             stream=True,
         )
     except Exception as e:
-        yield f"Error contacting Groq API: {e}"
+        yield f" Error contacting Groq API: {e}"
         return
 
     partial = ""
@@ -105,9 +103,9 @@ def respond(message, history):
         yield partial
 
 
-# --------------------------------------------------------
+# ---------------------------------------------------------------------------------
 # UI
-# --------------------------------------------------------
+# ---------------------------------------------------------------------------------
 theme = gr.themes.Soft(
     primary_hue="teal",
     secondary_hue="slate",
@@ -115,37 +113,42 @@ theme = gr.themes.Soft(
 )
 
 CUSTOM_CSS = """
-#chatbot-container {max-width: 860px; margin: 0 auto;}
-.gradio-container {background: #f7f9fb;}
-footer {visibility: hidden}
+#chatbot-container {max-width:860px; margin:0 auto;}
+.gradio-container {background:#f7f9fb;}
+footer {visibility:hidden}  
 """
 
 with gr.Blocks(theme=theme, css=CUSTOM_CSS) as demo:
+    # Build custom components to pass into ChatInterface properly
+    custom_chatbot = gr.Chatbot(
+        height=560,
+        elem_id="chatbot-container",
+        avatar_images=(None, "https://groq.com/favicon.ico"),
+    )
+
+    custom_textbox = gr.MultimodalTextbox(
+        placeholder="Ask a question, optionally attach an image..",
+        file_types=["image"],
+        file_count="multiple",
+        container=False,
+        scale=7,
+    )
+
     gr.ChatInterface(
         fn=respond,
         multimodal=True,
-        title="Groq Vision Chat",
+        title="Groq vision chat",
         description=(
-            "Attach an image and ask a question - powered by a Groq-hosted "
+            "Attach an image and ask a question - powered by a Groq-"
             "vision-language model. Text-only messages work too."
         ),
-        chatbot=gr.Chatbot(
-            height=560,
-            elem_id="chatbot-container",
-            avatar_images=(None, "https://groq.com/favicon.ico"),
-        ),
-        textbox=gr.MultimodalTextbox(
-            placeholder="Ask a question, optionally attach an image...",
-            file_types=["image"],
-            file_count="multiple",
-            container=False,
-            scale=7,
-        ),
-        submit_btn="Send",
+        chatbot=custom_chatbot,
+        textbox=custom_textbox,
+        submit_btn="send",
     )
 
 if __name__ == "__main__":
-    demo.queue().launch(  
+    demo.queue().launch(
         server_name="0.0.0.0",
-        server_port=int(os.environ.get("PORT", 7860)),
+        server_port=int(os.environ.get("PORT", 7860))
     )
